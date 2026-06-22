@@ -366,29 +366,32 @@ ul { list-style: none; }
   .hero-head { max-width: 100%; text-align: center; padding-top: .5rem; }
   .hero-rule { margin-left: auto; margin-right: auto; }
 
-  .hero { min-height: auto; }
-  .stage {
-    flex-direction: column; align-items: stretch; gap: 0;
-    padding: 0 1rem 3rem; order: 2;
-  }
-  /* Attorney becomes an in-flow living portrait between the headline and the
-     cards. position:static/relative + no transform/z-index keeps the blend
-     working over the navy. */
-  .attorney {
-    position: relative; left: auto; right: auto; bottom: auto;
-    order: 1;
-    height: clamp(320px, 46vh, 520px); width: 100%;
-    margin: 0 auto -1vh;
-  }
+  /* Keep the side-by-side split on mobile so her left/right gaze still maps to
+     the two choices; just compact the cards. She stays absolutely centered
+     BETWEEN them (the blend keeps working — .attorney has no transform/z-index). */
+  .stage { gap: .45rem; padding: clamp(.5rem, 2vh, 1.2rem) .55rem 1.4rem; align-items: center; }
   .card {
-    width: 100%; max-width: 460px; margin: 1.6rem auto 0;
-    min-height: auto; position: relative;
+    width: 38%; max-width: none; min-height: clamp(280px, 50vh, 440px);
+    padding: 1.3rem .7rem 1.4rem; border-radius: 16px;
   }
+  .card-list, .card-tag { display: none; }   /* drop bullets/tagline in the compact view */
+  .card-ico { width: 44px; height: 44px; margin-bottom: .75rem; }
+  .card-ico svg { width: 20px; height: 20px; }
+  .card h2 { font-size: clamp(1rem, 4.3vw, 1.5rem); line-height: 1.15; }
+  .pi-accidents { display: block; font-size: .6em; margin-top: .1rem; }
+  .card-divider { margin-bottom: .85rem; }
+  .card-btn { padding: .7rem .45rem; font-size: clamp(.58rem, 2.5vw, .72rem); letter-spacing: .03em; }
+  .card-btn .arr { display: none; }
+
+  /* smaller figure so her body sits in the centre gap between the two cards */
+  .attorney { height: clamp(240px, 40vh, 360px); }
 }
 @media (max-width: 480px) {
   .brand-name { font-size: 1.15rem; letter-spacing: .2em; }
-  .hero-head h1 { font-size: 1.65rem; }
-  .card h2 { font-size: 1.55rem; }
+  .hero-head h1 { font-size: 1.5rem; }
+  .card h2 { font-size: 1.05rem; }
+  .card-btn { font-size: .56rem; }
+  .attorney { height: clamp(220px, 34vh, 320px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -504,12 +507,8 @@ ul { list-style: none; }
   if (!hero) return;
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // The lean magnitudes live in CSS (.is-imm / .is-pi). JS only sets the state.
-  var head = hero.querySelector('.att-head');
-
+  // JS only sets the gaze state; the crossfade between the two clips lives in CSS.
   function apply(state) {
-    // clear any cursor-follow nudge so the CSS lean (or rest) takes over cleanly
-    if (head) { head.style.removeProperty('--x'); head.style.removeProperty('--rot'); }
     hero.classList.toggle('is-imm', state === 'imm');
     hero.classList.toggle('is-pi',  state === 'pi');
   }
@@ -517,50 +516,26 @@ ul { list-style: none; }
   if (reduce) { apply('none'); return; }
 
   var cards = hero.querySelectorAll('.card');
-  var stackedMQ = window.matchMedia('(max-width: 900px)');   // mobile / stacked layout
-  var hoverMQ   = window.matchMedia('(hover: hover)');
+  var touchMQ = window.matchMedia('(hover: none)');   // touch / no real hover
 
-  /* ---------- Side-by-side layout: she orients toward the hovered side ---------- */
   cards.forEach(function (card) {
     var side = card.getAttribute('data-side');
-    function enter() { if (!stackedMQ.matches) apply(side); }
-    function leave() { if (!stackedMQ.matches) apply('none'); }
-    card.addEventListener('mouseenter', enter);
-    card.addEventListener('mouseleave', leave);
-    card.addEventListener('focus', enter);
-    card.addEventListener('blur', leave);
+
+    /* Desktop: she gazes toward the hovered side, returns to center on leave. */
+    card.addEventListener('mouseenter', function () { if (!touchMQ.matches) apply(side); });
+    card.addEventListener('mouseleave', function () { if (!touchMQ.matches) apply('none'); });
+    card.addEventListener('focus', function () { apply(side); });
+    card.addEventListener('blur',  function () { apply('none'); });
+
+    /* Touch (side-by-side compact): a tap on the card turns her toward that
+       side; the "Explore" button still navigates. */
+    card.addEventListener('click', function (e) {
+      if (!touchMQ.matches) return;                  // desktop click navigates
+      if (e.target.closest('.card-btn')) return;     // CTA navigates
+      e.preventDefault();
+      apply(side);
+    });
   });
-
-  /* Head-only micro-follow: while she's attending to a side, her head/shoulders
-     drift a hair with the cursor. Tiny — reads as awareness, not a pointer. */
-  hero.addEventListener('mousemove', function (e) {
-    if (stackedMQ.matches || !hoverMQ.matches || !head) return;
-    var dir = hero.classList.contains('is-imm') ? -1
-            : hero.classList.contains('is-pi')  ?  1 : 0;
-    if (!dir) return;
-    var nx = (e.clientX / window.innerWidth - 0.5);   // -0.5..0.5
-    head.style.setProperty('--x',  (dir * 8  + nx * 4).toFixed(1) + 'px');
-    head.style.setProperty('--rot',(dir * 1.1 + nx * 0.5).toFixed(2) + 'deg');
-  });
-
-  /* ---------- Stacked layout: she attends to whichever card crosses the viewport center ---------- */
-  if ('IntersectionObserver' in window) {
-    var visible = {};
-    var io = new IntersectionObserver(function (entries) {
-      if (!stackedMQ.matches) return;          // only drives the stacked layout
-      entries.forEach(function (en) {
-        visible[en.target.getAttribute('data-side')] = en.isIntersecting;
-      });
-      if (visible.imm && !visible.pi) apply('imm');
-      else if (visible.pi && !visible.imm) apply('pi');
-      else apply('none');
-    }, { rootMargin: '-45% 0px -45% 0px', threshold: 0 });
-    cards.forEach(function (c) { io.observe(c); });
-  }
-
-  /* reset to center when switching layouts */
-  (stackedMQ.addEventListener ? stackedMQ.addEventListener('change', r) : stackedMQ.addListener(r));
-  function r() { apply('none'); }
 })();
 </script>
 
